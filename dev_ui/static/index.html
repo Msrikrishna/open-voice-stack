@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>open-voice-stack — Dev Console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+<header>
+  <h1>open-voice-stack</h1>
+  <div id="status">disconnected</div>
+</header>
+
+<main>
+  <aside id="panel">
+    <h2>Providers</h2>
+
+    <label>
+      STT base URL
+      <input type="text" id="sttBaseUrl" />
+    </label>
+    <label>
+      STT model
+      <input type="text" id="sttModel" />
+    </label>
+
+    <label>
+      LLM base URL
+      <input type="text" id="llmBaseUrl" />
+    </label>
+    <label>
+      LLM model
+      <input type="text" id="llmModel" />
+    </label>
+    <label>
+      LLM temperature <span id="tempVal">0.4</span>
+      <input type="range" id="llmTemperature" min="0" max="1" step="0.05" value="0.4" />
+    </label>
+
+    <label>
+      TTS base URL
+      <input type="text" id="ttsBaseUrl" />
+    </label>
+    <label>
+      TTS model
+      <input type="text" id="ttsModel" />
+    </label>
+    <label>
+      TTS voice
+      <input type="text" id="ttsVoice" />
+    </label>
+
+    <h2>Persona</h2>
+    <label>
+      Greeting (optional)
+      <textarea id="greeting" rows="2" placeholder="Leave blank for default"></textarea>
+    </label>
+    <label>
+      System prompt
+      <textarea id="systemPrompt" rows="10"></textarea>
+    </label>
+
+    <div class="buttons">
+      <button id="connectBtn">Connect</button>
+      <button id="disconnectBtn" disabled>Disconnect</button>
+    </div>
+
+    <p class="hint">Agent: <code id="agentNameLabel">open-voice-agent</code></p>
+  </aside>
+
+  <section id="chat">
+    <div id="transcript"></div>
+    <div id="micRow">
+      <div id="micIndicator">🎙️</div>
+      <button id="muteBtn" class="mic-btn" disabled>Mute</button>
+      <div id="hint">Click Connect to talk to the agent.</div>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.10/dist/livekit-client.umd.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
