@@ -1,0 +1,39 @@
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880"  # signaling (WS)
+      - "7881:7881"  # ICE/TCP — only transport that works under Colima.
+      # UDP intentionally NOT published: Colima can forward UDP into the
+      # container but the container cannot reply back to the host's LAN
+      # IP. ICE falls back to TCP.
+    restart: unless-stopped
+
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cpu
+    environment:
+      # Whisper model is downloaded on first request and cached in the
+      # mounted volume so restarts are instant.
+      WHISPER__MODEL: Systran/faster-whisper-base.en
+      WHISPER__INFERENCE_DEVICE: cpu
+      WHISPER__COMPUTE_TYPE: int8
+    volumes:
+      - ./models/whisper:/root/.cache/huggingface
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    environment:
+      # Pulls the Kokoro v1 weights into the mounted models volume on
+      # first start; no-op on subsequent restarts.
+      DOWNLOAD_MODEL: "true"
+    volumes:
+      - ./models/kokoro:/app/api/src/models
+    ports:
+      - "8880:8880"
+    restart: unless-stopped
