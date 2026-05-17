@@ -1,0 +1,13 @@
+[project]
+name = "open-voice-stack"
+version = "0.1.0"
+description = "Self-hostable voice agent — LiveKit OSS + faster-whisper + Kokoro + Ollama."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[openai,silero]>=1.2.18",
+    "aiohttp>=3.9",
+    "python-dotenv>=1.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["agent*", "dev_ui*"]

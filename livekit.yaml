@@ -1,0 +1,31 @@
+# LiveKit OSS config for local dev on Mac (Colima or Docker Desktop).
+#
+# Why TCP-only:
+#   WebRTC normally prefers UDP. But on Mac container runtimes, UDP fails
+#   in the return direction — the container can receive UDP from the host
+#   (via published port mappings) but cannot reply back to the host's LAN
+#   address from inside the VM's network namespace. ICE pairs go to
+#   `state: failed` after ~8 STUN binding retries.
+#
+#   TCP doesn't have this problem: the connection is opened from the
+#   client, and replies follow the same TCP socket back.
+#
+# The browser/agent will see only TCP candidates in the SDP and connect
+# via 127.0.0.1:7881 (forwarded by Colima/Docker to the container).
+
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+
+rtc:
+  tcp_port: 7881
+  use_external_ip: false
+  node_ip: 127.0.0.1
+  # Single-port UDP mux is disabled. We don't set udp_port and we don't
+  # publish UDP in docker-compose.yml — UDP candidates will time out and
+  # ICE falls back to the TCP candidate above.
+  port_range_start: 7882
+  port_range_end: 7882
+
+keys:
+  devkey: secret
