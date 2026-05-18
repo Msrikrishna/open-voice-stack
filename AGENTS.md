@@ -151,7 +151,59 @@ sidebar form will reflect the new values.
 
 ---
 
-## 6. Troubleshooting
+## 6. Extending the agent
+
+Both extension points sit inside `agent/worker.py` — no compose,
+config, or UI changes needed.
+
+### Tools
+
+Add a `@function_tool`-decorated async function and pass it to the
+`Agent` constructor. The LLM can then invoke it mid-conversation
+(`livekit-agents` handles the round-trip).
+
+```python
+from livekit.agents import function_tool
+
+@function_tool
+async def get_current_time(timezone: str = "UTC") -> str:
+    """Return the current time in the given IANA timezone."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo(timezone)).isoformat()
+
+# in entrypoint():
+await session.start(
+    room=ctx.room,
+    agent=Agent(instructions=system_prompt, tools=[get_current_time]),
+    ...
+)
+```
+
+For larger setups, drop tool files under `agent/tools/` and use
+`pkgutil.iter_modules` to auto-discover them.
+
+Reference: <https://docs.livekit.io/agents/build/tools/>
+
+### Knowledge (RAG / context injection)
+
+The simplest pattern is to inline relevant text into
+`Agent(instructions=...)`:
+
+```python
+sources = Path("agent/knowledge/sources").glob("*.md")
+knowledge = "\n\n".join(p.read_text() for p in sources)
+agent = Agent(instructions=f"{system_prompt}\n\n# KNOWLEDGE\n{knowledge}")
+```
+
+For a proper retriever (embed + vector search per turn), add
+`sentence-transformers` + a `ChatContext` enricher hook. For
+hot-reload, wrap the loader in a `watchfiles.awatch` loop and rebuild
+the index whenever a `.md` file changes.
+
+---
+
+## 7. Troubleshooting
 
 ### `Connect failed: could not establish pc connection`
 
@@ -237,7 +289,7 @@ Kill the conflicting process or change the published port in
 
 ---
 
-## 7. What lives where
+## 8. What lives where
 
 ```
 .
