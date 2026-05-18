@@ -177,3 +177,71 @@ code { background: var(--bg); padding: 1px 4px; border-radius: 3px; }
 .mic-btn.muted { background: #4a2a2a; color: #ffbdbd; }
 
 #hint { color: var(--muted); font-size: 13px; flex: 1; }
+
+/* Sessions sidebar list */
+.sess-refresh {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 500;
+  background: #2a313c;
+  margin-left: 6px;
+  text-transform: lowercase;
+  letter-spacing: 0;
+}
+.sess-refresh:hover:not(:disabled) { background: #3a414c; }
+
+.sess-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+.sess-list:empty::after {
+  content: "No sessions yet.";
+  color: var(--muted);
+  font-style: italic;
+}
+.sess-row {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.sess-row:hover { border-color: var(--accent); }
+.sess-row .sess-id { font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+.sess-row .sess-meta { color: var(--muted); font-size: 10px; margin-top: 2px; }
+
+/* Session detail viewer (overlays the live transcript area) */
+#sessionView {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+#sessionView.hidden { display: none; }
+#sessionViewHeader {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+#sessionViewHeader a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 12px;
+}
+#sessionViewHeader a:hover { text-decoration: underline; }
+#sessionViewClose { margin-left: auto; }
+#sessionViewTranscript {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

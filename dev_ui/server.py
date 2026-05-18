@@ -14,6 +14,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
+from typing import Any
 
 from aiohttp import web
 from dotenv import dotenv_values, load_dotenv
@@ -23,6 +24,8 @@ from livekit.protocol.room import CreateRoomRequest
 
 _DIR = Path(__file__).resolve().parent
 _ENV_FILE = _DIR.parent / ".env"
+_SESSIONS_DIR = _DIR.parent / "sessions"
+_PHOENIX_BASE_URL = os.environ.get("PHOENIX_BASE_URL", "http://localhost:6006")
 load_dotenv(_ENV_FILE)
 
 logging.basicConfig(level=logging.INFO, format="[dev_ui] %(message)s")
@@ -127,6 +130,50 @@ async def _defaults(_request: web.Request) -> web.Response:
     return web.json_response(_current_defaults())
 
 
+def _read_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return None
+
+
+async def _sessions_list(_request: web.Request) -> web.Response:
+    """List past sessions, newest first. Returns summary metadata only."""
+    if not _SESSIONS_DIR.exists():
+        return web.json_response([])
+    items = []
+    for d in sorted(_SESSIONS_DIR.iterdir(), reverse=True):
+        if not d.is_dir():
+            continue
+        meta = _read_json(d / "meta.json") or {}
+        transcript = _read_json(d / "transcript.json") or []
+        items.append({
+            "id": d.name,
+            "started_at": meta.get("started_at"),
+            "ended_at": meta.get("ended_at"),
+            "turns": len(transcript),
+            "trace_id": meta.get("trace_id"),
+            "phoenix_url": _PHOENIX_BASE_URL,
+        })
+    return web.json_response(items)
+
+
+async def _session_detail(request: web.Request) -> web.Response:
+    """Full transcript + meta for a single session."""
+    sid = request.match_info["id"]
+    if "/" in sid or sid.startswith("."):
+        return web.json_response({"error": "invalid id"}, status=400)
+    d = _SESSIONS_DIR / sid
+    if not d.is_dir():
+        return web.json_response({"error": "not found"}, status=404)
+    return web.json_response({
+        "id": sid,
+        "meta": _read_json(d / "meta.json"),
+        "transcript": _read_json(d / "transcript.json") or [],
+        "phoenix_url": _PHOENIX_BASE_URL,
+    })
+
+
 async def _index(_request: web.Request) -> web.Response:
     return web.FileResponse(_DIR / "static" / "index.html")
 
@@ -135,6 +182,8 @@ def main() -> None:
     app = web.Application()
     app.router.add_get("/", _index)
     app.router.add_get("/api/defaults", _defaults)
+    app.router.add_get("/api/sessions", _sessions_list)
+    app.router.add_get("/api/sessions/{id}", _session_detail)
     app.router.add_post("/api/token", _mint_token)
     app.router.add_static("/static", path=_DIR / "static", show_index=False)
     logger.info("dev UI on http://127.0.0.1:8080  (LiveKit=%s)", LIVEKIT_URL)

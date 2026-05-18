@@ -17,6 +17,7 @@ import logging
 import os
 import re
 from collections.abc import AsyncIterable
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,12 +34,32 @@ from livekit.agents import (
     metrics,
 )
 from livekit.plugins import openai, silero
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 _ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(_ROOT / ".env")
 
 logging.basicConfig(level=logging.INFO, format="[agent] %(levelname)s %(message)s")
 logger = logging.getLogger("open_voice_stack.agent")
+
+# OTEL setup runs once at module load. Phoenix accepts OTLP gRPC on :4317.
+# If Phoenix isn't running, the exporter logs warnings and drops spans —
+# the agent keeps working.
+_OTLP_ENDPOINT = os.environ.get("OTEL_ENDPOINT", "http://localhost:4317")
+_otel_provider = TracerProvider(
+    resource=Resource.create({"service.name": "open-voice-agent"})
+)
+_otel_provider.add_span_processor(
+    BatchSpanProcessor(OTLPSpanExporter(endpoint=_OTLP_ENDPOINT, insecure=True))
+)
+trace.set_tracer_provider(_otel_provider)
+_tracer = trace.get_tracer("open_voice_stack")
+
+_SESSIONS_DIR = _ROOT / "sessions"
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "open-voice-agent")
 
@@ -114,7 +135,17 @@ def _parse_room_metadata(ctx: JobContext) -> dict[str, Any]:
 
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
-    ctx.log_context_fields = {"room": getattr(ctx.room, "name", "<unknown>")}
+    room_name = getattr(ctx.room, "name", "<unknown>")
+    ctx.log_context_fields = {"room": room_name}
+
+    # Per-session output dir: sessions/<room>/{meta.json, transcript.json}.
+    session_dir = _SESSIONS_DIR / room_name
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    # Wrap the whole session in a span so framework-level spans nest under
+    # a single trace_id we can write to meta.json + surface in the UI.
+    session_span = _tracer.start_span("voice_session", attributes={"room": room_name})
+    trace_id_hex = format(session_span.get_span_context().trace_id, "032x")
 
     meta = _parse_room_metadata(ctx)
 
@@ -181,13 +212,71 @@ async def entrypoint(ctx: JobContext) -> None:
         metrics.log_metrics(ev.metrics)
         usage_collector.collect(ev.metrics)
 
-    async def _log_summary(_reason: str) -> None:
+    # Live transcript: appended to on each conversation item; flushed to
+    # disk after every turn so a crashed session still leaves something.
+    transcript: list[dict[str, Any]] = []
+
+    def _flush_transcript() -> None:
+        try:
+            (session_dir / "transcript.json").write_text(
+                json.dumps(transcript, indent=2)
+            )
+        except Exception as exc:
+            logger.warning("transcript flush failed: %s", exc)
+
+    @session.on("conversation_item_added")
+    def _on_item(ev: Any) -> None:
+        item = getattr(ev, "item", None)
+        if item is None:
+            return
+        text = getattr(item, "text_content", None)
+        if callable(text):
+            text = text()
+        if not text and getattr(item, "content", None):
+            # content can be list[str | ImageContent | ...]; coerce to str.
+            text = " ".join(str(c) for c in item.content if isinstance(c, str))
+        transcript.append({
+            "role": getattr(item, "role", "unknown"),
+            "text": text or "",
+            "ts": datetime.now(timezone.utc).isoformat(),
+        })
+        _flush_transcript()
+
+    # meta.json — written at start with config snapshot, updated at end
+    # with duration + usage summary.
+    session_meta = {
+        "room": room_name,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "trace_id": trace_id_hex,
+        "config": {
+            "stt": {"base_url": stt_base_url, "model": stt_model},
+            "llm": {"base_url": llm_base_url, "model": llm_model,
+                    "temperature": llm_temperature},
+            "tts": {"base_url": tts_base_url, "model": tts_model,
+                    "voice": tts_voice},
+        },
+    }
+    (session_dir / "meta.json").write_text(json.dumps(session_meta, indent=2))
+
+    async def _on_shutdown(_reason: str) -> None:
+        session_meta["ended_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            session_meta["usage"] = usage_collector.get_summary().__dict__
+        except Exception:
+            session_meta["usage"] = None
+        try:
+            (session_dir / "meta.json").write_text(
+                json.dumps(session_meta, indent=2, default=str)
+            )
+        except Exception as exc:
+            logger.warning("meta.json write failed: %s", exc)
+        session_span.end()
         try:
             logger.info("session usage: %s", usage_collector.get_summary())
         except Exception as exc:
             logger.warning("failed to log usage: %s", exc)
 
-    ctx.add_shutdown_callback(_log_summary)
+    ctx.add_shutdown_callback(_on_shutdown)
 
     await session.start(
         room=ctx.room,

@@ -184,3 +184,76 @@ async function toggleMute() {
 els.connect.addEventListener("click", connect);
 els.disconnect.addEventListener("click", disconnect);
 els.mute.addEventListener("click", toggleMute);
+
+// --- Sessions panel ---
+
+const sessEls = {
+  list:        document.getElementById("sessionsList"),
+  refresh:     document.getElementById("refreshSessionsBtn"),
+  view:        document.getElementById("sessionView"),
+  liveTranscript: document.getElementById("transcript"),
+  title:       document.getElementById("sessionViewTitle"),
+  phoenixLink: document.getElementById("sessionPhoenixLink"),
+  closeBtn:    document.getElementById("sessionViewClose"),
+  transcript:  document.getElementById("sessionViewTranscript"),
+};
+
+function fmtTs(iso) {
+  if (!iso) return "—";
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+}
+
+async function loadSessions() {
+  try {
+    const res = await fetch("/api/sessions");
+    const items = await res.json();
+    sessEls.list.innerHTML = "";
+    for (const s of items) {
+      const row = document.createElement("div");
+      row.className = "sess-row";
+      row.innerHTML = `
+        <div class="sess-id">${s.id}</div>
+        <div class="sess-meta">${fmtTs(s.started_at)} · ${s.turns} turns</div>
+      `;
+      row.addEventListener("click", () => openSession(s.id));
+      sessEls.list.appendChild(row);
+    }
+  } catch (err) {
+    addBubble("error", `Failed to load sessions: ${err.message}`);
+  }
+}
+
+async function openSession(id) {
+  try {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(id)}`);
+    const data = await res.json();
+    sessEls.title.textContent = `${id}  ·  ${data.transcript.length} turns`;
+    if (data.meta?.trace_id) {
+      sessEls.phoenixLink.href = data.phoenix_url || "http://localhost:6006";
+      sessEls.phoenixLink.style.display = "inline";
+      sessEls.phoenixLink.title = `trace_id ${data.meta.trace_id}`;
+    } else {
+      sessEls.phoenixLink.style.display = "none";
+    }
+    sessEls.transcript.innerHTML = "";
+    for (const turn of data.transcript) {
+      const div = document.createElement("div");
+      div.className = `bubble ${turn.role === "user" ? "user" : "agent"}`;
+      div.textContent = turn.text || "";
+      sessEls.transcript.appendChild(div);
+    }
+    sessEls.liveTranscript.style.display = "none";
+    sessEls.view.classList.remove("hidden");
+  } catch (err) {
+    addBubble("error", `Failed to open session: ${err.message}`);
+  }
+}
+
+function closeSession() {
+  sessEls.view.classList.add("hidden");
+  sessEls.liveTranscript.style.display = "";
+}
+
+sessEls.refresh.addEventListener("click", loadSessions);
+sessEls.closeBtn.addEventListener("click", closeSession);
+loadSessions();

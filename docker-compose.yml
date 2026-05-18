@@ -37,3 +37,18 @@ services:
     ports:
       - "8880:8880"
     restart: unless-stopped
+
+  # Phoenix (Arize) — local OTEL trace UI + storage.
+  # UI: http://localhost:6006
+  # OTLP gRPC ingest: localhost:4317 (agent worker exports here)
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    environment:
+      # SQLite store at /mnt/data — host-mounted so traces survive restarts.
+      PHOENIX_WORKING_DIR: /mnt/data
+    volumes:
+      - ./data/phoenix:/mnt/data
+    ports:
+      - "6006:6006"  # UI + OTLP HTTP
+      - "4317:4317"  # OTLP gRPC
+    restart: unless-stopped
