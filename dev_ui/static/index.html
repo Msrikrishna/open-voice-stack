@@ -67,10 +67,21 @@
     </div>
 
     <p class="hint">Agent: <code id="agentNameLabel">open-voice-agent</code></p>
+
+    <h2>Sessions <button id="refreshSessionsBtn" class="sess-refresh">refresh</button></h2>
+    <div id="sessionsList" class="sess-list"></div>
   </aside>
 
   <section id="chat">
     <div id="transcript"></div>
+    <div id="sessionView" class="hidden">
+      <div id="sessionViewHeader">
+        <strong id="sessionViewTitle"></strong>
+        <a id="sessionPhoenixLink" target="_blank" rel="noopener">view trace in Phoenix ↗</a>
+        <button id="sessionViewClose" class="sess-refresh">close</button>
+      </div>
+      <div id="sessionViewTranscript"></div>
+    </div>
     <div id="micRow">
       <div id="micIndicator">🎙️</div>
       <button id="muteBtn" class="mic-btn" disabled>Mute</button>

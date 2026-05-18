@@ -15,6 +15,7 @@ config.json
 models/
 sessions/
 voice_clones/
+data/
 agent/knowledge/data/
 
 # Tooling

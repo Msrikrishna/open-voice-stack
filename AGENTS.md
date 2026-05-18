@@ -84,10 +84,11 @@ running between launches; bring them down with `docker compose down`.
 ### Per-service health (containers)
 
 ```bash
-docker compose ps                            # all three "running"
+docker compose ps                            # all four "running"
 curl -s http://localhost:7880               # LiveKit returns "OK"
 curl -s http://localhost:8000/v1/models | jq # whisper lists models
 curl -s http://localhost:8880/v1/audio/voices | jq  # kokoro voices, af_bella present
+curl -s http://localhost:6006/health         # phoenix health → 200
 ```
 
 ### Ollama (host process, not in compose)
@@ -106,6 +107,27 @@ curl -s http://localhost:11434/v1/models | jq '.data[].id'
    see both user + agent transcripts in the chat panel.
 
 If any of those fail, see Troubleshooting below.
+
+### Observability (Phoenix) + Sessions
+
+After a call ends:
+
+1. The agent writes `sessions/<room>/{meta.json, transcript.json}` on
+   disk. Click **refresh** in the sidebar's **Sessions** section, then
+   click a row to view the transcript inline.
+2. The agent also exports OTEL spans to Phoenix on `:4317`. Open
+   <http://localhost:6006> directly, or click the **view trace in
+   Phoenix ↗** link in the session viewer. The `trace_id` in
+   `meta.json` is what to search for in the Phoenix UI.
+
+```bash
+# Verify Phoenix is up.
+curl -s http://localhost:6006/health
+# List the recorded sessions on disk.
+ls sessions/
+# Inspect a transcript directly.
+cat sessions/<room>/transcript.json | jq
+```
 
 ---
 
@@ -170,6 +192,34 @@ docker compose logs -f kokoro
 
 Wait for "Application startup complete." (~330 MB download).
 
+### Sessions sidebar is empty after a call
+
+Either the call didn't produce any conversation items (agent never
+spoke) or the agent worker can't write to `./sessions/`. Check:
+
+```bash
+ls -la sessions/
+# Each call should create a dir named like `dev-ui-abc12345/`
+# with meta.json + transcript.json inside.
+```
+
+If `sessions/` is missing or the agent log mentions a write error,
+ensure the working directory at `python -m agent.worker dev` time is
+the repo root.
+
+### Phoenix UI loads but shows no traces
+
+The agent exporter targets `http://localhost:4317`. Verify the Phoenix
+container exposes 4317 and the agent isn't pointed elsewhere:
+
+```bash
+docker compose ps phoenix     # should show 4317 published
+echo $OTEL_ENDPOINT           # leave unset to use the default
+```
+
+Restart the agent worker after starting Phoenix the first time — the
+exporter caches DNS at startup.
+
 ### Whisper / Kokoro models gone after `docker compose down -v`
 
 `-v` removes named volumes. Model files live in host-mounted
@@ -192,14 +242,16 @@ Kill the conflicting process or change the published port in
 ```
 .
 ├── AGENTS.md              # this file — full setup + verification spec
-├── docker-compose.yml     # LiveKit + whisper + kokoro
+├── docker-compose.yml     # LiveKit + whisper + kokoro + phoenix
 ├── livekit.yaml           # TCP-only ICE config (Colima-safe)
 ├── .env.example           # copy → .env on first run
 ├── pyproject.toml         # livekit-agents[openai,silero], aiohttp, dotenv
 ├── agent/
-│   └── worker.py          # AgentSession with openai.STT/LLM/TTS
+│   └── worker.py          # AgentSession + OTEL export + session writer
 ├── dev_ui/
-│   ├── server.py          # aiohttp: mints tokens, dispatches agent
+│   ├── server.py          # aiohttp: tokens, dispatch, sessions API
 │   └── static/            # one-page console (index.html, app.js, styles.css)
+├── sessions/              # per-call meta.json + transcript.json (gitignored)
+├── data/                  # Phoenix SQLite store (gitignored)
 └── models/                # host-mounted whisper + kokoro weights (gitignored)
 ```
